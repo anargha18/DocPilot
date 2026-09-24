@@ -1,0 +1,16 @@
+package com.docpilot.common.domain;
+
+public enum ActionType {
+    DOCUMENT_UPLOADED,
+    DOCUMENT_ANALYZED,
+    EMAIL_SELECTED,
+    SOCIAL_SELECTED,
+    CONTENT_GENERATED,
+    CONTENT_EDITED,
+    CONTENT_APPROVED,
+    CONTENT_REJECTED,
+    EMAIL_SENT,
+    SOCIAL_SENT,
+    FAILED
+}
+

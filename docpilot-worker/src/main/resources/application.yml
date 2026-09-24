@@ -1,0 +1,95 @@
+spring:
+  application:
+    name: docpilot-worker
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  kafka:
+    producer:
+      acks: all
+      retries: 3
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: docpilot-worker-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:mock-key}
+    vectorstore:
+      type: pgvector
+      pgvector:
+        table-name: vector_store
+        schema-name: public
+        dimensions: 1536
+        distance-type: COSINE_DISTANCE
+        index-type: HNSW
+        initialize-schema: false
+        schema-validation: true
+
+docpilot:
+  ai:
+    mock: ${DOCPILOT_AI_MOCK:true}
+  storage:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: ${MINIO_BUCKET:docpilot-documents}
+  kafka:
+    retry:
+      max-attempts: 3
+      initial-interval-ms: 1000
+      multiplier: 2.0
+      max-interval-ms: 5000
+  outbox:
+    relay:
+      enabled: true
+      fixed-delay-ms: 1000
+
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:postgresql://localhost:5432/docpilot
+    username: docpilot
+    password: docpilot_secret
+    driver-class-name: org.postgresql.Driver
+  kafka:
+    bootstrap-servers: localhost:9092
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:postgresql://postgres:5432/docpilot
+    username: docpilot
+    password: docpilot_secret
+    driver-class-name: org.postgresql.Driver
+  kafka:
+    bootstrap-servers: kafka:29092
+  docpilot:
+    storage:
+      endpoint: http://minio:9000
