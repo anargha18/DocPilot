@@ -1,0 +1,37 @@
+# Multi-stage Dockerfile for DocPilot Worker
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /workspace
+
+RUN apk add --no-cache bash
+
+COPY gradlew settings.gradle build.gradle ./
+COPY gradle ./gradle
+COPY docpilot-common/build.gradle ./docpilot-common/
+COPY docpilot-api/build.gradle ./docpilot-api/
+COPY docpilot-worker/build.gradle ./docpilot-worker/
+
+RUN ./gradlew dependencies --no-daemon || true
+
+COPY docpilot-common/src ./docpilot-common/src
+COPY docpilot-worker/src ./docpilot-worker/src
+
+RUN ./gradlew :docpilot-worker:bootJar --no-daemon -x test
+
+FROM eclipse-temurin:21-jre-alpine AS runtime
+RUN apk add --no-cache curl \
+    && addgroup -S docpilot && adduser -S docpilot -G docpilot \
+    && mkdir -p /app/logs \
+    && chown -R docpilot:docpilot /app
+
+WORKDIR /app
+
+COPY --from=builder --chown=docpilot:docpilot /workspace/docpilot-worker/build/libs/docpilot-worker-*.jar /app/app.jar
+
+USER docpilot
+
+ENV SPRING_PROFILES_ACTIVE=docker \
+    JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+
+EXPOSE 8081
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -Djava.security.egd=file:/dev/./urandom -jar /app/app.jar"]

@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: 'DocPilot Dashboards'
+    orgId: 1
+    folder: 'DocPilot'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 5
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

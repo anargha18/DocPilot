@@ -1,12 +1,15 @@
 package com.docpilot.common.storage;
 
+import com.docpilot.common.retry.RetryHelper;
 import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class MinioStorageService implements StorageService {
 
     @Value("${docpilot.storage.endpoint:http://localhost:9000}")
@@ -31,6 +35,9 @@ public class MinioStorageService implements StorageService {
 
     @Value("${docpilot.storage.bucket:docpilot-documents}")
     private String bucket;
+
+    private final RetryHelper retryHelper;
+    private final org.springframework.beans.factory.ObjectProvider<com.docpilot.common.observability.DocPilotTracer> tracerProvider;
 
     private MinioClient minioClient;
     private final Map<String, byte[]> fallbackStore = new ConcurrentHashMap<>();
@@ -64,14 +71,35 @@ public class MinioStorageService implements StorageService {
 
         if (minioAvailable && minioClient != null) {
             try {
-                minioClient.putObject(
-                        PutObjectArgs.builder()
-                                .bucket(bucket)
-                                .object(storageKey)
-                                .stream(new ByteArrayInputStream(data), data.length, -1)
-                                .contentType(contentType)
-                                .build()
-                );
+                com.docpilot.common.observability.DocPilotTracer tracer = tracerProvider.getIfAvailable();
+                if (tracer != null) {
+                    tracer.recordExternalCall("minio", "upload", () -> {
+                        retryHelper.executeCallable(() -> {
+                            minioClient.putObject(
+                                    PutObjectArgs.builder()
+                                            .bucket(bucket)
+                                            .object(storageKey)
+                                            .stream(new ByteArrayInputStream(data), data.length, -1)
+                                            .contentType(contentType)
+                                            .build()
+                            );
+                            return null;
+                        });
+                        return null;
+                    });
+                } else {
+                    retryHelper.executeCallable(() -> {
+                        minioClient.putObject(
+                                PutObjectArgs.builder()
+                                        .bucket(bucket)
+                                        .object(storageKey)
+                                        .stream(new ByteArrayInputStream(data), data.length, -1)
+                                        .contentType(contentType)
+                                        .build()
+                        );
+                        return null;
+                    });
+                }
                 log.debug("Uploaded {} bytes to MinIO object [{}]", data.length, storageKey);
                 return storageKey;
             } catch (Exception e) {
@@ -87,12 +115,24 @@ public class MinioStorageService implements StorageService {
     public InputStream download(String storageKey) {
         if (minioAvailable && minioClient != null) {
             try {
-                return minioClient.getObject(
-                        GetObjectArgs.builder()
-                                .bucket(bucket)
-                                .object(storageKey)
-                                .build()
-                );
+                com.docpilot.common.observability.DocPilotTracer tracer = tracerProvider.getIfAvailable();
+                if (tracer != null) {
+                    return tracer.recordExternalCall("minio", "download", () ->
+                            retryHelper.executeCallable(() -> minioClient.getObject(
+                                    GetObjectArgs.builder()
+                                            .bucket(bucket)
+                                            .object(storageKey)
+                                            .build()
+                            ))
+                    );
+                } else {
+                    return retryHelper.executeCallable(() -> minioClient.getObject(
+                            GetObjectArgs.builder()
+                                    .bucket(bucket)
+                                    .object(storageKey)
+                                    .build()
+                    ));
+                }
             } catch (Exception e) {
                 log.warn("Failed to download from MinIO ({}), checking fallback", e.getMessage());
             }

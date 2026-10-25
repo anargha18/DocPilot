@@ -26,5 +26,6 @@ public class DocumentUploadedEvent {
     private Long fileSize;
     private Instant uploadTimestamp;
     private UUID eventId;
+    private String correlationId;
     private boolean forceFailure;
 }

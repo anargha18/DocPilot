@@ -18,6 +18,7 @@ public class DocumentResponse {
     private Long fileSize;
     private Instant uploadTimestamp;
     private DocumentStatus status;
+    private String correlationId;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -30,6 +31,7 @@ public class DocumentResponse {
                 .fileSize(doc.getFileSize())
                 .uploadTimestamp(doc.getUploadTimestamp())
                 .status(doc.getStatus())
+                .correlationId(doc.getCorrelationId())
                 .createdAt(doc.getCreatedAt())
                 .updatedAt(doc.getUpdatedAt())
                 .build();

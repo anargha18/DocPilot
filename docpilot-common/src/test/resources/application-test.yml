@@ -1,4 +1,11 @@
 spring:
+  main:
+    web-application-type: none
+  ai:
+    openai:
+      api-key: test-key
+    vectorstore:
+      type: simple
   jpa:
     hibernate:
       ddl-auto: validate
@@ -10,4 +17,11 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+
+docpilot:
+  ai:
+    mock: true
+  kafka:
+    lag-monitor:
+      enabled: false
 

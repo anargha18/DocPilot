@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 2s
+  evaluation_interval: 2s
+
+scrape_configs:
+  - job_name: 'docpilot-api'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['docpilot-api:8080']
+        labels:
+          application: 'docpilot-api'
+
+  - job_name: 'docpilot-worker'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['docpilot-worker:8081']
+        labels:
+          application: 'docpilot-worker'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

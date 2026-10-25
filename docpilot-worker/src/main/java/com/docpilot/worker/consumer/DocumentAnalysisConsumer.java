@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +18,7 @@ import java.util.UUID;
 
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "docpilot.analysis-consumer.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class DocumentAnalysisConsumer {
 
@@ -25,6 +27,7 @@ public class DocumentAnalysisConsumer {
     private final DocumentAnalysisService documentAnalysisService;
     private final IdempotentConsumerService idempotentConsumerService;
     private final ObjectMapper objectMapper;
+    private final org.springframework.beans.factory.ObjectProvider<com.docpilot.common.observability.DocPilotTracer> tracerProvider;
 
     @KafkaListener(
             topics = KafkaTopics.DOCUMENT_UPLOADED,
@@ -39,6 +42,8 @@ public class DocumentAnalysisConsumer {
                 record.topic(), record.partition(), record.offset(), key);
 
         String eventId = extractHeader(record, "X-Event-Id");
+        String headerCorrelationId = extractHeader(record, "X-Correlation-Id");
+        String traceParent = extractHeader(record, "traceparent");
         boolean forceFailure = "true".equalsIgnoreCase(extractHeader(record, "X-Force-Failure"));
 
         DocumentUploadedEvent event = null;
@@ -47,6 +52,9 @@ public class DocumentAnalysisConsumer {
                 event = objectMapper.readValue(payload, DocumentUploadedEvent.class);
                 if (eventId == null && event.getEventId() != null) {
                     eventId = event.getEventId().toString();
+                }
+                if (headerCorrelationId == null && event.getCorrelationId() != null) {
+                    headerCorrelationId = event.getCorrelationId();
                 }
                 if (!forceFailure && event.isForceFailure()) {
                     forceFailure = true;
@@ -61,6 +69,9 @@ public class DocumentAnalysisConsumer {
                 log.warn("Could not deserialize payload as DocumentUploadedEvent: {}", e.getMessage());
             }
         }
+
+        String correlationId = headerCorrelationId != null ? headerCorrelationId : (key != null ? key : UUID.randomUUID().toString());
+        com.docpilot.common.observability.CorrelationContext.setCorrelationId(correlationId);
 
         if (eventId == null) {
             eventId = key != null ? key : (record.topic() + "-" + record.partition() + "-" + record.offset());
@@ -98,6 +109,12 @@ public class DocumentAnalysisConsumer {
             return;
         }
 
+        com.docpilot.common.observability.DocPilotTracer tracer = tracerProvider.getIfAvailable();
+        com.docpilot.common.observability.DocPilotTracer.TraceScope stageScope = null;
+        if (tracer != null) {
+            stageScope = tracer.startStageSpan("analysis", correlationId, documentId.toString(), traceParent);
+        }
+
         try {
             documentAnalysisService.markAnalyzing(documentId);
 
@@ -108,14 +125,24 @@ public class DocumentAnalysisConsumer {
                 parsedEventId = UUID.randomUUID();
             }
 
-            documentAnalysisService.analyzeAndPersist(documentId, parsedEventId, storageKey, filename);
+            String currentTraceParent = stageScope != null ? stageScope.getTraceParent() : traceParent;
+
+            documentAnalysisService.analyzeAndPersist(documentId, parsedEventId, storageKey, filename, correlationId, currentTraceParent);
 
             idempotentConsumerService.markAsProcessed(eventId, CONSUMER_NAME, null);
         } catch (Exception e) {
+            if (stageScope != null) {
+                stageScope.markFailed(e);
+            }
             log.error("Error processing document analysis for document [{}] event [{}]: {}",
                     documentId, eventId, e.getMessage(), e);
             documentAnalysisService.markFailed(documentId, e.getMessage());
             throw new RuntimeException("Document analysis processing failed: " + eventId, e);
+        } finally {
+            if (stageScope != null) {
+                stageScope.close();
+            }
+            com.docpilot.common.observability.CorrelationContext.clear();
         }
     }
 

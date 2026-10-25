@@ -13,7 +13,7 @@ import com.docpilot.common.repository.DocumentAnalysisRepository;
 import com.docpilot.common.repository.DocumentRepository;
 import com.docpilot.common.repository.OutboxEventRepository;
 import com.docpilot.common.storage.StorageService;
-import com.docpilot.worker.service.DocumentEmbeddingService;
+import com.docpilot.common.service.DocumentEmbeddingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
@@ -41,7 +41,8 @@ import static org.awaitility.Awaitility.await;
         "spring.datasource.password=docpilot_secret",
         "spring.datasource.driver-class-name=org.postgresql.Driver",
         "spring.jpa.hibernate.ddl-auto=none",
-        "spring.flyway.enabled=false",
+        "spring.flyway.enabled=true",
+        "spring.flyway.validate-on-migrate=false",
         "spring.kafka.bootstrap-servers=localhost:9092",
         "spring.ai.vectorstore.type=pgvector",
         "spring.ai.vectorstore.pgvector.initialize-schema=false",

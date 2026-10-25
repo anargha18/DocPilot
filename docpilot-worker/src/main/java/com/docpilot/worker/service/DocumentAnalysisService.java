@@ -14,6 +14,7 @@ import com.docpilot.common.repository.DocumentAnalysisRepository;
 import com.docpilot.common.repository.DocumentRepository;
 import com.docpilot.common.repository.OutboxEventRepository;
 import com.docpilot.common.storage.StorageService;
+import com.docpilot.common.service.DocumentEmbeddingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,10 +52,28 @@ public class DocumentAnalysisService {
 
     @Transactional
     public DocumentAnalysis analyzeAndPersist(UUID documentId, UUID eventId, String storageKey, String filename) {
-        log.info("Starting analysis workflow for document [{}] (storageKey: {})", documentId, storageKey);
+        return analyzeAndPersist(documentId, eventId, storageKey, filename,
+                com.docpilot.common.observability.CorrelationContext.getCorrelationId(), null);
+    }
+
+    @Transactional
+    public DocumentAnalysis analyzeAndPersist(UUID documentId, UUID eventId, String storageKey, String filename,
+                                             String correlationId, String traceParent) {
+        if (correlationId != null) {
+            com.docpilot.common.observability.CorrelationContext.setCorrelationId(correlationId);
+        }
+        log.info("Starting analysis workflow for document [{}] (storageKey: {}, correlationId: {})",
+                documentId, storageKey, correlationId);
 
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found: " + documentId));
+
+        if (correlationId != null && (document.getCorrelationId() == null || document.getCorrelationId().isBlank())) {
+            document.setCorrelationId(correlationId);
+        }
+        if (traceParent != null && (document.getTraceParent() == null || document.getTraceParent().isBlank())) {
+            document.setTraceParent(traceParent);
+        }
 
         // 1. Download file from storage (MinIO or configured fallback)
         String key = storageKey != null ? storageKey : document.getStorageKey();
@@ -105,6 +124,7 @@ public class DocumentAnalysisService {
         DocumentAnalyzedEvent analyzedEvent = DocumentAnalyzedEvent.builder()
                 .eventId(UUID.randomUUID())
                 .documentId(documentId)
+                .correlationId(correlationId)
                 .summary(result.summary())
                 .category(result.category())
                 .extractedContext(result.context())
@@ -119,17 +139,19 @@ public class DocumentAnalysisService {
                     .aggregateId(documentId.toString())
                     .eventType(KafkaTopics.DOCUMENT_ANALYZED)
                     .payload(payload)
+                    .correlationId(correlationId)
+                    .traceParent(traceParent != null ? traceParent : document.getTraceParent())
                     .published(false)
                     .build();
             outboxEventRepository.save(outboxEvent);
-            log.info("Saved outbox event [{}] for topic [{}] aggregate [{}]",
-                    outboxEvent.getId(), KafkaTopics.DOCUMENT_ANALYZED, documentId);
+            log.info("Saved outbox event [{}] for topic [{}] aggregate [{}] (correlationId: {})",
+                    outboxEvent.getId(), KafkaTopics.DOCUMENT_ANALYZED, documentId, correlationId);
         } catch (Exception e) {
             log.error("Failed to serialize and save outbox event for document [{}]: {}", documentId, e.getMessage());
             throw new RuntimeException("Failed to emit document.analyzed outbox event", e);
         }
 
-        log.info("Successfully completed AI analysis for document [{}]", documentId);
+        log.info("Successfully completed AI analysis for document [{}] (correlationId: {})", documentId, correlationId);
         return analysis;
     }
 

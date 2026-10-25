@@ -35,6 +35,43 @@ docpilot:
       initial-interval-ms: 100
       multiplier: 1.5
       max-interval-ms: 500
+    lag-monitor:
+      enabled: false
   outbox:
     relay:
       enabled: false
+  delivery:
+    email:
+      from: notifications@docpilot.com
+      default-recipient: team@docpilot.com
+    x:
+      bearer-token: test-token
+      api-url: https://api.twitter.com/2/tweets
+  email-consumer:
+    enabled: true
+  social-consumer:
+    enabled: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      emailDelivery:
+        sliding-window-size: 3
+        minimum-number-of-calls: 3
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 2000ms
+        permitted-number-of-calls-in-half-open-state: 1
+      socialDelivery:
+        sliding-window-size: 3
+        minimum-number-of-calls: 3
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 2000ms
+        permitted-number-of-calls-in-half-open-state: 1
+  timelimiter:
+    instances:
+      emailDelivery:
+        timeout-duration: 2s
+        cancel-running-future: true
+      socialDelivery:
+        timeout-duration: 2s
+        cancel-running-future: true

@@ -106,9 +106,141 @@ services:
       exit 0;
       "
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.60.0
+    container_name: docpilot-jaeger
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+
+  docpilot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: docpilot-api
+    image: docpilot-api:latest
+    container_name: docpilot-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/docpilot
+      SPRING_DATASOURCE_USERNAME: docpilot
+      SPRING_DATASOURCE_PASSWORD: docpilot_secret
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      DOCPILOT_STORAGE_ENDPOINT: http://minio:9000
+      DOCPILOT_STORAGE_ACCESS_KEY: minioadmin
+      DOCPILOT_STORAGE_SECRET_KEY: minioadmin
+      DOCPILOT_STORAGE_BUCKET: docpilot-documents
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      DOCPILOT_AI_MOCK: "true"
+      DOCPILOT_DEFAULT_USER_USERNAME: user
+      DOCPILOT_DEFAULT_USER_PASSWORD: password
+      DOCPILOT_ADMIN_USERNAME: admin
+      DOCPILOT_ADMIN_PASSWORD: password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  docpilot-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_MODULE: docpilot-worker
+    image: docpilot-worker:latest
+    container_name: docpilot-worker
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/docpilot
+      SPRING_DATASOURCE_USERNAME: docpilot
+      SPRING_DATASOURCE_PASSWORD: docpilot_secret
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      DOCPILOT_STORAGE_ENDPOINT: http://minio:9000
+      DOCPILOT_STORAGE_ACCESS_KEY: minioadmin
+      DOCPILOT_STORAGE_SECRET_KEY: minioadmin
+      DOCPILOT_STORAGE_BUCKET: docpilot-documents
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      DOCPILOT_AI_MOCK: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      docpilot-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: docpilot-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    depends_on:
+      - docpilot-api
+      - docpilot-worker
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: docpilot-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./docker/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./docker/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
   kafka_data:
   redis_data:
   minio_data:
-

@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,6 +22,10 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Document extends BaseEntity {
+
+    @Version
+    @Column(name = "version")
+    private Long version;
 
     @Column(name = "filename", nullable = false)
     private String filename;
@@ -42,6 +47,12 @@ public class Document extends BaseEntity {
     @Column(name = "status", nullable = false)
     @Builder.Default
     private DocumentStatus status = DocumentStatus.UPLOADED;
+
+    @Column(name = "correlation_id")
+    private String correlationId;
+
+    @Column(name = "trace_parent")
+    private String traceParent;
 
     public String getFilename() {
         return filename;

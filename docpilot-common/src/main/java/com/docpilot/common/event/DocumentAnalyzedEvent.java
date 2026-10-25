@@ -22,6 +22,7 @@ import java.util.UUID;
 public class DocumentAnalyzedEvent {
     private UUID eventId;
     private UUID documentId;
+    private String correlationId;
     private String summary;
     private String category;
     private String extractedContext;

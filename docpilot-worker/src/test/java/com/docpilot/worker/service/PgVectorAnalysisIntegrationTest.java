@@ -1,5 +1,6 @@
 package com.docpilot.worker.service;
 
+import com.docpilot.common.service.DocumentEmbeddingService;
 import com.docpilot.worker.ai.MockEmbeddingModel;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.password=docpilot_secret",
         "spring.datasource.driver-class-name=org.postgresql.Driver",
         "spring.jpa.hibernate.ddl-auto=none",
-        "spring.flyway.enabled=false",
+        "spring.flyway.enabled=true",
+        "spring.flyway.validate-on-migrate=false",
         "spring.ai.vectorstore.type=pgvector",
         "spring.ai.vectorstore.pgvector.initialize-schema=false",
         "spring.ai.vectorstore.pgvector.schema-validation=false",

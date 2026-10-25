@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docpilot-worker
+  namespace: docpilot
+  labels:
+    app.kubernetes.io/name: docpilot-worker
+    app.kubernetes.io/part-of: docpilot
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: docpilot-worker
+  template:
+    metadata:
+      labels:
+        app: docpilot-worker
+        app.kubernetes.io/name: docpilot-worker
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: docpilot-worker
+          image: docpilot-worker:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+              name: http
+          envFrom:
+            - configMapRef:
+                name: docpilot-config
+            - secretRef:
+                name: docpilot-secrets
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8081
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: docpilot-worker
+  namespace: docpilot
+  labels:
+    app.kubernetes.io/name: docpilot-worker
+    app.kubernetes.io/part-of: docpilot
+spec:
+  type: ClusterIP
+  selector:
+    app: docpilot-worker
+  ports:
+    - port: 8081
+      targetPort: 8081
+      name: http

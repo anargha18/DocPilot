@@ -16,6 +16,15 @@ dependencies {
     api 'org.springframework.boot:spring-boot-starter-aop'
     api 'io.minio:minio:8.5.12'
 
+    api 'org.springframework.ai:spring-ai-starter-model-openai'
+    api 'org.springframework.ai:spring-ai-starter-vector-store-pgvector'
+
+    api 'org.springframework.boot:spring-boot-starter-actuator'
+    api 'io.micrometer:micrometer-registry-prometheus'
+    api 'io.micrometer:micrometer-tracing-bridge-otel'
+    api 'io.opentelemetry:opentelemetry-exporter-otlp'
+    api 'net.logstash.logback:logstash-logback-encoder:7.4'
+
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'

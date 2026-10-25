@@ -52,6 +52,43 @@ docpilot:
     relay:
       enabled: true
       fixed-delay-ms: 1000
+  delivery:
+    email:
+      from: ${DOCPILOT_EMAIL_FROM:notifications@docpilot.com}
+      default-recipient: ${DOCPILOT_EMAIL_RECIPIENT:team@docpilot.com}
+    x:
+      bearer-token: ${X_BEARER_TOKEN:mock-token}
+      api-url: ${X_API_URL:https://api.twitter.com/2/tweets}
+  email-consumer:
+    enabled: true
+  social-consumer:
+    enabled: true
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      emailDelivery:
+        sliding-window-size: 5
+        minimum-number-of-calls: 3
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 5000ms
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+      socialDelivery:
+        sliding-window-size: 5
+        minimum-number-of-calls: 3
+        failure-rate-threshold: 50.0
+        wait-duration-in-open-state: 5000ms
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+  timelimiter:
+    instances:
+      emailDelivery:
+        timeout-duration: 3s
+        cancel-running-future: true
+      socialDelivery:
+        timeout-duration: 3s
+        cancel-running-future: true
 
 server:
   port: 8081
@@ -60,10 +97,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
   endpoint:
     health:
       show-details: always
+      probes:
+        enabled: true
 
 ---
 spring:
@@ -84,12 +130,15 @@ spring:
     activate:
       on-profile: docker
   datasource:
-    url: jdbc:postgresql://postgres:5432/docpilot
-    username: docpilot
-    password: docpilot_secret
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/docpilot}
+    username: ${SPRING_DATASOURCE_USERNAME:docpilot}
+    password: ${SPRING_DATASOURCE_PASSWORD:docpilot_secret}
     driver-class-name: org.postgresql.Driver
   kafka:
-    bootstrap-servers: kafka:29092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
   docpilot:
     storage:
-      endpoint: http://minio:9000
+      endpoint: ${DOCPILOT_STORAGE_ENDPOINT:http://minio:9000}
+      access-key: ${DOCPILOT_STORAGE_ACCESS_KEY:minioadmin}
+      secret-key: ${DOCPILOT_STORAGE_SECRET_KEY:minioadmin}
+      bucket: ${DOCPILOT_STORAGE_BUCKET:docpilot-documents}

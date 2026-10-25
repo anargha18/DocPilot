@@ -27,6 +27,19 @@ spring:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:mock-key}
+    vectorstore:
+      type: pgvector
+      pgvector:
+        table-name: vector_store
+        schema-name: public
+        dimensions: 1536
+        distance-type: COSINE_DISTANCE
+        index-type: HNSW
+        initialize-schema: false
+        schema-validation: true
 
 server:
   port: 8080
@@ -37,6 +50,12 @@ management:
       exposure:
         include: health,info,metrics,prometheus
       base-path: /actuator
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
   endpoint:
     health:
       show-details: always
@@ -54,6 +73,22 @@ management:
       enabled: true
 
 docpilot:
+  security:
+    jwt:
+      secret: ${DOCPILOT_JWT_SECRET:docpilot-secret-jwt-key-for-portfolio-authentication-must-be-at-least-256-bits-long-docpilot}
+      expiration-ms: ${DOCPILOT_JWT_EXPIRATION_MS:86400000}
+    users:
+      - username: ${DOCPILOT_DEFAULT_USER_USERNAME:user}
+        password: ${DOCPILOT_DEFAULT_USER_PASSWORD:password}
+        roles:
+          - USER
+      - username: ${DOCPILOT_ADMIN_USERNAME:admin}
+        password: ${DOCPILOT_ADMIN_PASSWORD:password}
+        roles:
+          - USER
+          - ADMIN
+  ai:
+    mock: ${DOCPILOT_AI_MOCK:true}
   storage:
     bucket: docpilot-documents
   outbox:

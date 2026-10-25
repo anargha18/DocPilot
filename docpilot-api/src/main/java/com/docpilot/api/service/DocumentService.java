@@ -1,5 +1,6 @@
 package com.docpilot.api.service;
 
+import com.docpilot.api.dto.ActivityLogResponse;
 import com.docpilot.api.dto.DocumentResponse;
 import com.docpilot.common.storage.StorageService;
 import com.docpilot.common.domain.ActionType;
@@ -35,6 +36,7 @@ public class DocumentService {
     private final OutboxEventRepository outboxEventRepository;
     private final StorageService storageService;
     private final ObjectMapper objectMapper;
+    private final org.springframework.beans.factory.ObjectProvider<com.docpilot.common.observability.DocPilotTracer> tracerProvider;
 
     @Transactional
     public DocumentResponse uploadDocument(MultipartFile file) {
@@ -42,69 +44,98 @@ public class DocumentService {
             throw new IllegalArgumentException("Cannot upload an empty file");
         }
 
-        String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "unnamed";
-        String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
-        byte[] content;
-        try {
-            content = file.getBytes();
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to read uploaded file contents", e);
+        String correlationId = com.docpilot.common.observability.CorrelationContext.getOrGenerateCorrelationId(null);
+        com.docpilot.common.observability.DocPilotTracer tracer = tracerProvider.getIfAvailable();
+        com.docpilot.common.observability.DocPilotTracer.TraceScope stageScope = null;
+        if (tracer != null) {
+            stageScope = tracer.startStageSpan("upload", correlationId, null, null);
         }
 
-        // 1. Upload to storage (MinIO or in-memory fallback)
-        String storageKey = storageService.upload(originalFilename, content, contentType);
-
-        // 2. Persist Document entity
-        Document document = Document.builder()
-                .filename(originalFilename)
-                .storageKey(storageKey)
-                .contentType(contentType)
-                .fileSize(file.getSize())
-                .uploadTimestamp(Instant.now())
-                .status(DocumentStatus.UPLOADED)
-                .build();
-        document = documentRepository.save(document);
-
-        // 3. Persist ActivityLog audit entry
-        ActivityLog logEntry = ActivityLog.builder()
-                .documentId(document.getId())
-                .actionType(ActionType.DOCUMENT_UPLOADED)
-                .details("Document uploaded: " + originalFilename + " (" + file.getSize() + " bytes)")
-                .build();
-        activityLogRepository.save(logEntry);
-
-        // 4. Construct event payload
-        DocumentUploadedEvent eventPayload = DocumentUploadedEvent.builder()
-                .documentId(document.getId())
-                .filename(document.getFilename())
-                .storageKey(document.getStorageKey())
-                .contentType(document.getContentType())
-                .fileSize(document.getFileSize())
-                .uploadTimestamp(document.getUploadTimestamp())
-                .forceFailure(originalFilename.toLowerCase().contains("fail") || originalFilename.toLowerCase().contains("dlq"))
-                .build();
-
-        String payloadJson;
         try {
-            payloadJson = objectMapper.writeValueAsString(eventPayload);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize document uploaded event", e);
+            String originalFilename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "unnamed";
+            String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+            byte[] content;
+            try {
+                content = file.getBytes();
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to read uploaded file contents", e);
+            }
+
+            // 1. Upload to storage (MinIO or in-memory fallback)
+            String storageKey = storageService.upload(originalFilename, content, contentType);
+
+            String traceParent = stageScope != null ? stageScope.getTraceParent() : null;
+
+            // 2. Persist Document entity
+            Document document = Document.builder()
+                    .filename(originalFilename)
+                    .storageKey(storageKey)
+                    .contentType(contentType)
+                    .fileSize(file.getSize())
+                    .uploadTimestamp(Instant.now())
+                    .status(DocumentStatus.UPLOADED)
+                    .correlationId(correlationId)
+                    .traceParent(traceParent)
+                    .build();
+            document = documentRepository.save(document);
+
+            if (stageScope != null) {
+                stageScope.getSpan().setAttribute("document.id", document.getId().toString());
+            }
+
+            // 3. Persist ActivityLog audit entry
+            ActivityLog logEntry = ActivityLog.builder()
+                    .documentId(document.getId())
+                    .actionType(ActionType.DOCUMENT_UPLOADED)
+                    .details("Document uploaded: " + originalFilename + " (" + file.getSize() + " bytes)")
+                    .build();
+            activityLogRepository.save(logEntry);
+
+            // 4. Construct event payload
+            DocumentUploadedEvent eventPayload = DocumentUploadedEvent.builder()
+                    .documentId(document.getId())
+                    .filename(document.getFilename())
+                    .storageKey(document.getStorageKey())
+                    .contentType(document.getContentType())
+                    .fileSize(document.getFileSize())
+                    .uploadTimestamp(document.getUploadTimestamp())
+                    .correlationId(correlationId)
+                    .forceFailure(originalFilename.toLowerCase().contains("fail") || originalFilename.toLowerCase().contains("dlq"))
+                    .build();
+
+            String payloadJson;
+            try {
+                payloadJson = objectMapper.writeValueAsString(eventPayload);
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException("Failed to serialize document uploaded event", e);
+            }
+
+            // 5. Persist OutboxEvent in the same database transaction
+            OutboxEvent outboxEvent = OutboxEvent.builder()
+                    .aggregateType("DOCUMENT")
+                    .aggregateId(document.getId().toString())
+                    .eventType(KafkaTopics.DOCUMENT_UPLOADED)
+                    .payload(payloadJson)
+                    .correlationId(correlationId)
+                    .traceParent(traceParent)
+                    .published(false)
+                    .build();
+            outboxEvent = outboxEventRepository.save(outboxEvent);
+
+            log.info("Document [{}] uploaded and transactional outbox event [{}] created (correlationId: {})",
+                    document.getId(), outboxEvent.getId(), correlationId);
+
+            return DocumentResponse.from(document);
+        } catch (Exception e) {
+            if (stageScope != null) {
+                stageScope.markFailed(e);
+            }
+            throw e;
+        } finally {
+            if (stageScope != null) {
+                stageScope.close();
+            }
         }
-
-        // 5. Persist OutboxEvent in the same database transaction
-        OutboxEvent outboxEvent = OutboxEvent.builder()
-                .aggregateType("DOCUMENT")
-                .aggregateId(document.getId().toString())
-                .eventType(KafkaTopics.DOCUMENT_UPLOADED)
-                .payload(payloadJson)
-                .published(false)
-                .build();
-        outboxEvent = outboxEventRepository.save(outboxEvent);
-
-        log.info("Document [{}] uploaded and transactional outbox event [{}] created",
-                document.getId(), outboxEvent.getId());
-
-        return DocumentResponse.from(document);
     }
 
     @Transactional(readOnly = true)
@@ -119,6 +150,17 @@ public class DocumentService {
         return documentRepository.findAllByOrderByUploadTimestampDesc()
                 .stream()
                 .map(DocumentResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ActivityLogResponse> getActivityHistory(UUID documentId) {
+        if (documentId == null) {
+            throw new IllegalArgumentException("Document ID cannot be null");
+        }
+        return activityLogRepository.findByDocumentIdOrderByTimestampAsc(documentId)
+                .stream()
+                .map(ActivityLogResponse::from)
                 .toList();
     }
 }

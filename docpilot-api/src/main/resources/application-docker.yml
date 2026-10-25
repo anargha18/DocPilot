@@ -1,20 +1,20 @@
 spring:
   datasource:
-    url: jdbc:postgresql://postgres:5432/docpilot
-    username: docpilot
-    password: docpilot_secret
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/docpilot}
+    username: ${SPRING_DATASOURCE_USERNAME:docpilot}
+    password: ${SPRING_DATASOURCE_PASSWORD:docpilot_secret}
     driver-class-name: org.postgresql.Driver
   kafka:
-    bootstrap-servers: kafka:29092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:kafka:29092}
   data:
     redis:
-      host: redis
-      port: 6379
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
 docpilot:
   storage:
-    endpoint: http://minio:9000
-    access-key: minioadmin
-    secret-key: minioadmin
-    bucket: docpilot-documents
+    endpoint: ${DOCPILOT_STORAGE_ENDPOINT:http://minio:9000}
+    access-key: ${DOCPILOT_STORAGE_ACCESS_KEY:minioadmin}
+    secret-key: ${DOCPILOT_STORAGE_SECRET_KEY:minioadmin}
+    bucket: ${DOCPILOT_STORAGE_BUCKET:docpilot-documents}
 

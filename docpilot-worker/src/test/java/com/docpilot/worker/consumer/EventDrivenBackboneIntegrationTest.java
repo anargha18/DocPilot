@@ -34,6 +34,7 @@ import static org.awaitility.Awaitility.await;
         "spring.kafka.bootstrap-servers=${spring.embedded.kafka.brokers}",
         "docpilot.outbox.relay.enabled=true",
         "docpilot.dummy-consumer.enabled=true",
+        "docpilot.analysis-consumer.enabled=false",
         "docpilot.kafka.retry.initial-interval-ms=100",
         "docpilot.kafka.retry.max-attempts=3",
         "docpilot.kafka.retry.multiplier=1.2",

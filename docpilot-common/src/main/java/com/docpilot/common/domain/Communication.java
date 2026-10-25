@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -22,6 +23,10 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Communication extends BaseEntity {
+
+    @Version
+    @Column(name = "version")
+    private Long version;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "document_id", nullable = false)
@@ -41,5 +46,20 @@ public class Communication extends BaseEntity {
     @Column(name = "status", nullable = false)
     @Builder.Default
     private CommunicationStatus status = CommunicationStatus.DRAFT;
+
+    @Column(name = "edit_count", nullable = false)
+    @Builder.Default
+    private int editCount = 0;
+
+    @Column(name = "edited", nullable = false)
+    @Builder.Default
+    private boolean edited = false;
+
+    @Column(name = "correlation_id")
+    private String correlationId;
+
+    public String getEffectiveContent() {
+        return (editedContent != null && !editedContent.isBlank()) ? editedContent : generatedContent;
+    }
 }
 

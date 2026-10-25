@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docpilot-config
+  namespace: docpilot
+  labels:
+    app.kubernetes.io/name: docpilot
+    app.kubernetes.io/component: configuration
+data:
+  SPRING_PROFILES_ACTIVE: "docker"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres.docpilot.svc.cluster.local:5432/docpilot"
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka.docpilot.svc.cluster.local:9092"
+  SPRING_DATA_REDIS_HOST: "redis.docpilot.svc.cluster.local"
+  SPRING_DATA_REDIS_PORT: "6379"
+  DOCPILOT_STORAGE_ENDPOINT: "http://minio.docpilot.svc.cluster.local:9000"
+  DOCPILOT_STORAGE_BUCKET: "docpilot-documents"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger.docpilot.svc.cluster.local:4318/v1/traces"
+  DOCPILOT_AI_MOCK: "true"
+  DOCPILOT_DEFAULT_USER_USERNAME: "user"
+  DOCPILOT_ADMIN_USERNAME: "admin"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"

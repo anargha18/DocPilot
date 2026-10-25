@@ -53,6 +53,12 @@ public class OutboxEvent {
     @Builder.Default
     private boolean published = false;
 
+    @Column(name = "correlation_id")
+    private String correlationId;
+
+    @Column(name = "trace_parent")
+    private String traceParent;
+
     @PrePersist
     protected void onCreate() {
         if (this.createdAt == null) {

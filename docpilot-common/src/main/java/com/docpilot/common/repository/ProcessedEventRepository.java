@@ -12,4 +12,5 @@ public interface ProcessedEventRepository extends JpaRepository<ProcessedEvent, 
     boolean existsByEventIdAndConsumerName(String eventId, String consumerName);
     Optional<ProcessedEvent> findByEventIdAndConsumerName(String eventId, String consumerName);
     void deleteByEventIdAndConsumerName(String eventId, String consumerName);
+    void deleteByEventId(String eventId);
 }

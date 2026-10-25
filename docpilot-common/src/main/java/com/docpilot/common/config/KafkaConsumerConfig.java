@@ -1,6 +1,8 @@
 package com.docpilot.common.config;
 
 import com.docpilot.common.event.KafkaTopics;
+import com.docpilot.common.observability.DocPilotMetrics;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaOperations;
+import org.springframework.kafka.core.MicrometerConsumerListener;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
@@ -19,9 +22,12 @@ import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 
 @Slf4j
 @Configuration
+@RequiredArgsConstructor
 @ConditionalOnClass(ConcurrentKafkaListenerContainerFactory.class)
 @ConditionalOnProperty(name = "spring.kafka.bootstrap-servers")
 public class KafkaConsumerConfig {
+
+    private final DocPilotMetrics docPilotMetrics;
 
     @Value("${docpilot.kafka.retry.max-attempts:3}")
     private int maxAttempts;
@@ -43,6 +49,7 @@ public class KafkaConsumerConfig {
             log.warn("Retries exhausted for message [key={}, partition={}, offset={}] from topic [{}]. Routing to DLQ [{}] due to error: {}",
                     record.key(), record.partition(), record.offset(), originalTopic, dlqTopic,
                     exception != null ? exception.getMessage() : "unknown");
+            docPilotMetrics.recordDlqMessage(originalTopic, dlqTopic);
             return new TopicPartition(dlqTopic, -1);
         });
     }
@@ -58,6 +65,7 @@ public class KafkaConsumerConfig {
         errorHandler.setRetryListeners((record, ex, deliveryAttempt) -> {
             log.info("Kafka consumer retry attempt {} of {} for topic [{}] key [{}] due to: {}",
                     deliveryAttempt, maxAttempts, record.topic(), record.key(), ex.getMessage());
+            docPilotMetrics.recordRetry("kafka_consumer", record.topic());
         });
 
         return errorHandler;
@@ -69,6 +77,11 @@ public class KafkaConsumerConfig {
             ConsumerFactory<Object, Object> consumerFactory,
             DefaultErrorHandler kafkaErrorHandler
     ) {
+        try {
+            consumerFactory.addListener(new MicrometerConsumerListener<>(docPilotMetrics.getMeterRegistry()));
+        } catch (Exception e) {
+            log.debug("MicrometerConsumerListener could not be attached: {}", e.getMessage());
+        }
         ConcurrentKafkaListenerContainerFactory<Object, Object> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         configurer.configure(factory, consumerFactory);

@@ -67,26 +67,36 @@ public class OutboxRelay {
         String topic = event.getEventType();
         String key = event.getAggregateId();
         String payload = event.getPayload();
+        String correlationId = event.getCorrelationId();
 
-        ProducerRecord<Object, Object> record = new ProducerRecord<>(topic, key, payload);
-        record.headers().add(new RecordHeader("X-Event-Id", event.getId().toString().getBytes(StandardCharsets.UTF_8)));
-        record.headers().add(new RecordHeader("X-Aggregate-Id", event.getAggregateId().getBytes(StandardCharsets.UTF_8)));
-        record.headers().add(new RecordHeader("X-Aggregate-Type", event.getAggregateType().getBytes(StandardCharsets.UTF_8)));
-        record.headers().add(new RecordHeader("X-Event-Type", event.getEventType().getBytes(StandardCharsets.UTF_8)));
+        try (var ignored = com.docpilot.common.observability.CorrelationContext.open(correlationId)) {
+            ProducerRecord<Object, Object> record = new ProducerRecord<>(topic, key, payload);
+            record.headers().add(new RecordHeader("X-Event-Id", event.getId().toString().getBytes(StandardCharsets.UTF_8)));
+            record.headers().add(new RecordHeader("X-Aggregate-Id", event.getAggregateId().getBytes(StandardCharsets.UTF_8)));
+            record.headers().add(new RecordHeader("X-Aggregate-Type", event.getAggregateType().getBytes(StandardCharsets.UTF_8)));
+            record.headers().add(new RecordHeader("X-Event-Type", event.getEventType().getBytes(StandardCharsets.UTF_8)));
 
-        try {
-            kafkaTemplate.send(record).get(5, TimeUnit.SECONDS);
-            log.info("Published outbox event [id={}, type={}, aggregateId={}] to topic [{}]",
-                    event.getId(), event.getEventType(), event.getAggregateId(), topic);
-            return true;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("Publishing outbox event [{}] interrupted: {}", event.getId(), e.getMessage());
-            return false;
-        } catch (Exception e) {
-            log.error("Failed to publish outbox event [{}] to topic [{}]: {}",
-                    event.getId(), topic, e.getMessage());
-            return false;
+            if (correlationId != null) {
+                record.headers().add(new RecordHeader("X-Correlation-Id", correlationId.getBytes(StandardCharsets.UTF_8)));
+            }
+            if (event.getTraceParent() != null) {
+                record.headers().add(new RecordHeader("traceparent", event.getTraceParent().getBytes(StandardCharsets.UTF_8)));
+            }
+
+            try {
+                kafkaTemplate.send(record).get(5, TimeUnit.SECONDS);
+                log.info("Published outbox event [id={}, type={}, aggregateId={}, correlationId={}] to topic [{}]",
+                        event.getId(), event.getEventType(), event.getAggregateId(), correlationId, topic);
+                return true;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("Publishing outbox event [{}] interrupted: {}", event.getId(), e.getMessage());
+                return false;
+            } catch (Exception e) {
+                log.error("Failed to publish outbox event [{}] to topic [{}]: {}",
+                        event.getId(), topic, e.getMessage());
+                return false;
+            }
         }
     }
 }

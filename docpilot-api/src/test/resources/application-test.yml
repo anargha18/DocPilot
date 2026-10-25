@@ -12,8 +12,32 @@ spring:
     bootstrap-servers: localhost:9092
   flyway:
     enabled: false
+  ai:
+    openai:
+      api-key: test-key
+    vectorstore:
+      type: simple
 
 docpilot:
+  security:
+    jwt:
+      secret: docpilot-test-secret-jwt-key-for-portfolio-authentication-must-be-at-least-256-bits-long
+      expiration-ms: 86400000
+    users:
+      - username: testuser
+        password: password
+        roles:
+          - USER
+      - username: testadmin
+        password: password
+        roles:
+          - USER
+          - ADMIN
+  ai:
+    mock: true
+  kafka:
+    lag-monitor:
+      enabled: false
   outbox:
     relay:
       enabled: false
